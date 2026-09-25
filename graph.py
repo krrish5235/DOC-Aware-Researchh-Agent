@@ -134,6 +134,20 @@ def run_web_search(state: AgentState) -> dict:
     return {"web_context": context, "steps": ["web_search"]}
 
 
+def _to_text(content) -> str:
+    """langchain-core v1 may return AIMessage.content as a list of typed
+    blocks instead of a plain string."""
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+        elif isinstance(block, str):
+            parts.append(block)
+    return "".join(parts)
+
+
 def generate(state: AgentState) -> dict:
     if state.get("doc_verdict") == "useful":
         context, source = state["doc_context"], "docs"
@@ -150,13 +164,15 @@ def generate(state: AgentState) -> dict:
         "direct": "none — answer from general knowledge",
     }[source]
 
-    answer = generate_chain.invoke(
-        {
-            "context": context,
-            "question": state["question"],
-            "source_label": source_label,
-        }
-    ).content
+    answer = _to_text(
+        generate_chain.invoke(
+            {
+                "context": context,
+                "question": state["question"],
+                "source_label": source_label,
+            }
+        ).content
+    )
     return {"source": source, "answer": answer, "steps": [f"generate ({source})"]}
 
 

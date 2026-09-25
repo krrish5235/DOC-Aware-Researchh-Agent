@@ -37,8 +37,8 @@ don't contain the answer. Every answer reports which source was used.
 |---|---|---|
 | Orchestration | LangGraph | Explicit state machine for the decide → retrieve → grade → fallback loop |
 | RAG chain + loading | LangChain | Document loaders, text splitter, prompt chains |
-| LLM | Gemini `gemini-2.0-flash` | Fast + cheap; structured output for router/grader |
-| Embeddings | Gemini `text-embedding-004` | Same API as the LLM, one key |
+| LLM | Gemini `gemini-3.5-flash-lite` | Fast + free-tier friendly; structured output for router/grader. Google retires numbered models often — check `.env` (`LLM_MODEL=`) if you ever hit a 404, e.g. switch to the `gemini-flash-latest` alias |
+| Embeddings | Gemini `gemini-embedding-001` | Same API as the LLM, one key (text-embedding-004 was deprecated by Google) |
 | Vector store | Chroma (local, persisted) | Free, no account, runs on disk |
 | Web search | Tavily (free tier) with DuckDuckGo fallback | Works with or without an API key |
 | Serving | CLI + Flask | `python app.py "..."` or `POST /ask` |
