@@ -80,8 +80,15 @@ Question: {question}
 Retrieved context:
 {context}
 
-Does this context contain the information needed to answer the question?
-Grade strictly: weak or partially related context counts as insufficient."""
+Does this context contain information that addresses the specific question?
+- "useful": the context has a section, fact, or decision that answers (or
+  partially answers) the question.
+- "insufficient": the context is only topically related and never addresses
+  the actual question.
+
+Do not be overly strict — a partial answer counts as useful. Answering from
+the user's own documents is strongly preferable to a web search, which may
+describe a different subject with the same name."""
 )
 
 GENERATE_PROMPT = ChatPromptTemplate.from_template(
