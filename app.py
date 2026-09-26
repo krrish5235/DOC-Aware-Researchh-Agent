@@ -28,12 +28,15 @@ def _extract_web_sources(web_context: str) -> list[str]:
 
 
 def ask(question: str) -> dict:
-    """Run the graph and return {answer, source, sources, steps}."""
+    """Run the graph and return {answer, source, sources, steps, elapsed}."""
     global graph
     if graph is None:
         from graph import graph as g
 
         graph = g
+    import time
+
+    t0 = time.perf_counter()
     result = graph.invoke({"question": question, "steps": []})
 
     if result["source"] == "docs":
@@ -49,6 +52,7 @@ def ask(question: str) -> dict:
         "source": result["source"],
         "sources": sources,
         "steps": result["steps"],
+        "elapsed": round(time.perf_counter() - t0, 1),
     }
 
 
@@ -75,29 +79,16 @@ def run_cli() -> None:
 
 
 def create_app():
-    from flask import Flask, jsonify, render_template_string
+    from flask import Flask, jsonify, render_template, request
 
     app = Flask(__name__)
 
-    page = """<!doctype html>
-<title>Doc-Aware Research Agent</title>
-<h1>Doc-Aware Research Agent</h1>
-<form onsubmit="event.preventDefault();fetch('/ask',{method:'POST',
-headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q.value})})
-.then(r=>r.json()).then(d=>{out.textContent=d.answer+'\\n\\n[source] '+d.source+
-'\\n[trace] '+d.steps.join(' -> ')});">
-<input id="q" size="60" placeholder="Ask a question...">
-<button>Ask</button></form>
-<pre id="out" style="white-space:pre-wrap"></pre>"""
-
     @app.get("/")
     def index():
-        return render_template_string(page)
+        return render_template("index.html")
 
     @app.post("/ask")
     def ask_endpoint():
-        from flask import request
-
         question = (request.get_json(silent=True) or {}).get("question", "").strip()
         if not question:
             return jsonify({"error": "Send {\"question\": \"...\"} as JSON"}), 400

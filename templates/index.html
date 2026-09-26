@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doc-Aware Research Agent</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg: #070b14;
+    --glass: rgba(255, 255, 255, 0.045);
+    --glass-border: rgba(255, 255, 255, 0.10);
+    --text: #e8edf5;
+    --muted: #8b96ab;
+    --teal: #2dd4bf;
+    --violet: #8b5cf6;
+    --blue: #38bdf8;
+    --pink: #f472b6;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+
+  /* ---------- aurora background ---------- */
+  .orbs { position: fixed; inset: 0; z-index: 0; overflow: hidden; filter: blur(70px); }
+  .orb { position: absolute; border-radius: 50%; opacity: .55; will-change: transform; }
+  .orb-1 { width: 480px; height: 480px; left: -120px; top: -140px;   background: radial-gradient(circle, #134e4a, transparent 70%); animation: drift1 16s ease-in-out infinite alternate; }
+  .orb-2 { width: 560px; height: 560px; right: -160px; top: 8%;      background: radial-gradient(circle, #3b1d6e, transparent 70%); animation: drift2 19s ease-in-out infinite alternate; }
+  .orb-3 { width: 520px; height: 520px; left: 30%; bottom: -220px;   background: radial-gradient(circle, #0c4a6e, transparent 70%); animation: drift3 22s ease-in-out infinite alternate; }
+  .orb-4 { width: 300px; height: 300px; right: 22%; bottom: -80px;   background: radial-gradient(circle, #701a4b, transparent 70%); animation: drift1 25s ease-in-out infinite alternate-reverse; }
+  @keyframes drift1 { to { translate: 60px 40px;  scale: 1.15; } }
+  @keyframes drift2 { to { translate: -70px 50px; scale: 0.9;  } }
+  @keyframes drift3 { to { translate: 40px -60px; scale: 1.1;  } }
+
+  .grid-overlay {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, black 30%, transparent 75%);
+  }
+
+  /* ---------- 3D scene ---------- */
+  .scene {
+    position: relative; z-index: 1;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 48px 16px 40px;
+    perspective: 1400px;
+  }
+
+  .card {
+    width: min(860px, 100%);
+    margin: auto 0; /* overflow-safe vertical centering */
+    transform-style: preserve-3d;
+    transition: transform .1s linear;
+    will-change: transform;
+  }
+
+  .panel {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 24px;
+    backdrop-filter: blur(22px);
+    -webkit-backdrop-filter: blur(22px);
+    box-shadow:
+      0 30px 60px -20px rgba(0,0,0,.65),
+      inset 0 1px 0 rgba(255,255,255,.08);
+  }
+
+  /* ---------- header ---------- */
+  header { display: flex; align-items: center; gap: 18px; padding: 28px 32px 20px; transform: translateZ(40px); }
+
+  .cube-stage { width: 52px; height: 52px; perspective: 300px; flex: none; }
+  .cube {
+    width: 34px; height: 34px; position: relative; margin: 9px;
+    transform-style: preserve-3d;
+    animation: spin 7s linear infinite;
+  }
+  .cube div {
+    position: absolute; inset: 0;
+    border: 1.5px solid rgba(45, 212, 191, .8);
+    background: rgba(45, 212, 191, .06);
+    box-shadow: inset 0 0 12px rgba(45, 212, 191, .25);
+  }
+  .cube .f1 { transform: translateZ(17px); }
+  .cube .f2 { transform: rotateY(180deg) translateZ(17px); border-color: rgba(139,92,246,.8); background: rgba(139,92,246,.06); box-shadow: inset 0 0 12px rgba(139,92,246,.25); }
+  .cube .f3 { transform: rotateY(90deg)  translateZ(17px); border-color: rgba(56,189,248,.8); background: rgba(56,189,248,.06); box-shadow: inset 0 0 12px rgba(56,189,248,.25); }
+  .cube .f4 { transform: rotateY(-90deg) translateZ(17px); }
+  .cube .f5 { transform: rotateX(90deg)  translateZ(17px); border-color: rgba(244,114,182,.8); background: rgba(244,114,182,.06); }
+  .cube .f6 { transform: rotateX(-90deg) translateZ(17px); }
+  @keyframes spin { from { transform: rotateX(-18deg) rotateY(0); } to { transform: rotateX(-18deg) rotateY(360deg); } }
+
+  h1 {
+    font-size: 26px; font-weight: 700; letter-spacing: -.3px;
+    background: linear-gradient(92deg, #7ef7e4, #a78bfa 55%, #7dd3fc);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .subtitle { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+
+  /* ---------- ask row ---------- */
+  .ask-row { display: flex; gap: 12px; padding: 6px 32px 8px; transform: translateZ(30px); }
+
+  .field { position: relative; flex: 1; }
+  input#q {
+    width: 100%; padding: 15px 18px; font-size: 15px; color: var(--text);
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--glass-border); border-radius: 14px;
+    outline: none; transition: border-color .2s, box-shadow .2s;
+  }
+  input#q::placeholder { color: #5d6779; }
+  input#q:focus { border-color: rgba(45,212,191,.55); box-shadow: 0 0 0 4px rgba(45,212,191,.10); }
+
+  button#ask {
+    padding: 15px 30px; font-size: 15px; font-weight: 600; color: #04211d;
+    background: linear-gradient(135deg, #2dd4bf, #38bdf8);
+    border: none; border-radius: 14px; cursor: pointer;
+    box-shadow: 0 6px 0 #0f5e57, 0 14px 26px -8px rgba(45,212,191,.45);
+    transition: transform .08s, box-shadow .08s, filter .2s;
+    transform: translateZ(20px);
+  }
+  button#ask:hover { filter: brightness(1.08); }
+  button#ask:active { transform: translateZ(20px) translateY(5px); box-shadow: 0 1px 0 #0f5e57, 0 6px 12px -8px rgba(45,212,191,.4); }
+  button#ask:disabled { opacity: .55; cursor: wait; }
+
+  /* ---------- example chips ---------- */
+  .examples { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 32px 24px; transform: translateZ(24px); }
+  .ex-chip {
+    font-size: 12.5px; color: var(--muted); cursor: pointer; user-select: none;
+    padding: 7px 14px; border-radius: 999px;
+    border: 1px solid var(--glass-border); background: rgba(255,255,255,.03);
+    transition: all .18s ease; transform-style: preserve-3d;
+  }
+  .ex-chip:hover {
+    color: var(--text); border-color: rgba(45,212,191,.5);
+    background: rgba(45,212,191,.07);
+    transform: translateY(-2px) rotateX(8deg);
+    box-shadow: 0 8px 18px -8px rgba(0,0,0,.6);
+  }
+
+  /* ---------- answer panel ---------- */
+  #out-wrap { margin-top: 6px; display: none; transform: translateZ(14px); }
+  #out-wrap.show { display: block; animation: rise .45s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes rise { from { opacity: 0; transform: translateZ(14px) translateY(22px); } }
+
+  #out { padding: 24px 30px 26px; }
+
+  .badges { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .badge {
+    font-size: 12px; font-weight: 600; letter-spacing: .2px;
+    padding: 5px 13px; border-radius: 999px; border: 1px solid;
+  }
+  .badge.docs   { color: #5eead4; border-color: rgba(94,234,212,.4);  background: rgba(45,212,191,.09); }
+  .badge.web    { color: #7dd3fc; border-color: rgba(125,211,252,.4); background: rgba(56,189,248,.09); }
+  .badge.direct { color: #c4b5fd; border-color: rgba(196,181,253,.4); background: rgba(139,92,246,.09); }
+  .badge.time   { color: var(--muted); border-color: var(--glass-border); background: rgba(255,255,255,.03); margin-left: auto; }
+
+  /* pipeline */
+  .pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 18px; }
+  .chip {
+    font-family: ui-monospace, Consolas, monospace; font-size: 11.5px;
+    color: var(--muted); padding: 5px 11px; border-radius: 8px;
+    border: 1px solid var(--glass-border); background: rgba(255,255,255,.02);
+    opacity: 0; animation: chipIn .4s forwards;
+  }
+  @keyframes chipIn { from { opacity: 0; transform: translateY(8px) scale(.9); } to { opacity: 1; transform: none; } }
+  .chip.hl { color: #d9f2ec; border-color: rgba(45,212,191,.45); background: rgba(45,212,191,.08); }
+  .chip-arrow { color: #3d475c; font-size: 11px; opacity: 0; animation: chipIn .4s forwards; }
+
+  #answer {
+    font-size: 15px; line-height: 1.75; color: #dbe3ee;
+    min-height: 24px; white-space: pre-wrap; overflow-wrap: break-word;
+  }
+  #answer .caret { display: inline-block; width: 8px; height: 17px; background: var(--teal); vertical-align: -3px; margin-left: 2px; animation: blink .9s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* sources */
+  #sources { margin-top: 18px; display: none; flex-wrap: wrap; gap: 8px; }
+  #sources.show { display: flex; }
+  .src {
+    font-size: 12px; max-width: 100%;
+    padding: 7px 13px; border-radius: 10px; text-decoration: none;
+    color: #9db4c8; border: 1px solid var(--glass-border);
+    background: rgba(255,255,255,.03);
+    transition: all .18s ease; transform-style: preserve-3d;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .src:hover {
+    color: #cfe9ff; border-color: rgba(56,189,248,.5);
+    transform: translateY(-3px) rotateX(10deg);
+    box-shadow: 0 10px 20px -8px rgba(0,0,0,.65);
+  }
+  .src .ico { margin-right: 6px; }
+
+  /* error + loading */
+  #error { display: none; margin-top: 14px; padding: 14px 16px; border-radius: 12px; font-size: 13.5px;
+           color: #fda4af; border: 1px solid rgba(253,164,175,.35); background: rgba(253,164,175,.07); }
+  #error.show { display: block; animation: rise .4s; }
+
+  #loading { display: none; align-items: center; gap: 16px; margin-top: 18px; padding: 18px 22px; border-radius: 16px;
+             border: 1px solid var(--glass-border); background: rgba(255,255,255,.02); }
+  #loading.show { display: flex; animation: rise .4s; }
+  #loading .cube-stage { width: 40px; height: 40px; }
+  #loading .cube { width: 24px; height: 24px; margin: 8px; }
+  #loading .cube div { border-width: 1px; }
+  #loading .cube .f1, #loading .cube .f2, #loading .cube .f3, #loading .cube .f4, #loading .cube .f5, #loading .cube .f6 { transform: none; }
+  #loading .cube .f1 { transform: translateZ(12px); } #loading .cube .f2 { transform: rotateY(180deg) translateZ(12px); }
+  #loading .cube .f3 { transform: rotateY(90deg) translateZ(12px); } #loading .cube .f4 { transform: rotateY(-90deg) translateZ(12px); }
+  #loading .cube .f5 { transform: rotateX(90deg) translateZ(12px); } #loading .cube .f6 { transform: rotateX(-90deg) translateZ(12px); }
+  #load-msg { font-size: 13.5px; color: var(--muted); }
+  #load-msg::after { content: ""; animation: dots 1.4s steps(4) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+
+  footer { margin-top: 26px; color: #55617a; font-size: 12px; text-align: center; transform: translateZ(6px); }
+  footer b { color: #6d7a94; font-weight: 600; }
+
+  @media (max-width: 640px) {
+    header { padding: 22px 20px 14px; } .ask-row { padding: 4px 20px 6px; flex-direction: column; }
+    .examples { padding: 10px 20px 18px; } #out { padding: 20px 20px 22px; }
+    button#ask { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<div class="orbs">
+  <div class="orb orb-1"></div><div class="orb orb-2"></div>
+  <div class="orb orb-3"></div><div class="orb orb-4"></div>
+</div>
+<div class="grid-overlay"></div>
+
+<div class="scene" id="scene">
+  <div class="card" id="card">
+
+    <div class="panel">
+      <header>
+        <div class="cube-stage"><div class="cube" id="logo-cube">
+          <div class="f1"></div><div class="f2"></div><div class="f3"></div>
+          <div class="f4"></div><div class="f5"></div><div class="f6"></div>
+        </div></div>
+        <div>
+          <h1>Doc-Aware Research Agent</h1>
+          <div class="subtitle">Answers from your documents first — falls back to the web, and tells you which</div>
+        </div>
+      </header>
+
+      <div class="ask-row">
+        <div class="field"><input id="q" placeholder="Ask a question…" autocomplete="off"></div>
+        <button id="ask">Ask</button>
+      </div>
+
+      <div class="examples">
+        <div class="ex-chip">📄 What database does the Aurora dashboard use?</div>
+        <div class="ex-chip">🌐 What is the latest stable version of Python?</div>
+        <div class="ex-chip">🧭 When is the deadline for the Aurora v2 launch?</div>
+      </div>
+    </div>
+
+    <div id="out-wrap">
+      <div id="out" class="panel">
+        <div class="badges">
+          <span class="badge" id="src-badge"></span>
+          <span class="badge time" id="elapsed"></span>
+        </div>
+        <div class="pipeline" id="pipeline"></div>
+        <div id="answer"></div>
+        <div id="sources"></div>
+        <div id="error"></div>
+        <div id="loading">
+          <div class="cube-stage"><div class="cube">
+            <div class="f1"></div><div class="f2"></div><div class="f3"></div>
+            <div class="f4"></div><div class="f5"></div><div class="f6"></div>
+          </div></div>
+          <div id="load-msg">Routing your question</div>
+        </div>
+      </div>
+    </div>
+
+    <footer>Built with <b>LangGraph</b> · <b>Gemini</b> · <b>Chroma</b> · <b>Tavily / DuckDuckGo</b> — your documents never leave this machine</footer>
+  </div>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const card = $("card"), scene = $("scene"), orbs = document.querySelectorAll(".orb");
+
+  /* ---- 3D mouse gesture: card tilt + orb parallax, smoothed ---- */
+  let tx = 0, ty = 0, rx = 0, ry = 0;
+  scene.addEventListener("mousemove", (e) => {
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width - 0.5;
+    const py = (e.clientY - r.top) / r.height - 0.5;
+    tx = px * 9; ty = -py * 7;
+    orbs.forEach((o, i) => { o.style.translate = `${px * 26 * (i % 2 ? -1 : 1)}px ${py * 22}px`; });
+  });
+  scene.addEventListener("mouseleave", () => { tx = 0; ty = 0; });
+  (function loop() {
+    rx += (tx - rx) * 0.07; ry += (ty - ry) * 0.07;
+    card.style.transform = `rotateX(${ry.toFixed(3)}deg) rotateY(${rx.toFixed(3)}deg)`;
+    requestAnimationFrame(loop);
+  })();
+
+  /* ---- loading messages ---- */
+  const LOAD_MSGS = [
+    "Routing your question", "Searching your documents", "Grading retrieved context",
+    "Consulting the web", "Composing the answer"
+  ];
+  let loadTimer = null, msgTimer = null, mi = 0;
+  function startLoading() {
+    $("loading").classList.add("show");
+    $("error").classList.remove("show");
+    mi = 0; $("load-msg").textContent = LOAD_MSGS[0];
+    msgTimer = setInterval(() => { mi = (mi + 1) % LOAD_MSGS.length; $("load-msg").textContent = LOAD_MSGS[mi]; }, 2600);
+  }
+  function stopLoading() { clearInterval(msgTimer); $("loading").classList.remove("show"); }
+
+  /* ---- rendering helpers ---- */
+  function fmtStep(s) {
+    return s.replace("router ->", "🧭 Router →")
+            .replace("retrieve_docs", "📚 Retrieve")
+            .replace("grader ->", "⚖️ Grade →")
+            .replace("web_search", "🌐 Web search")
+            .replace("generate", "✨ Generate");
+  }
+  function renderPipeline(steps) {
+    const p = $("pipeline"); p.innerHTML = "";
+    steps.forEach((s, i) => {
+      if (i > 0) {
+        const a = document.createElement("span");
+        a.className = "chip-arrow"; a.textContent = "→";
+        a.style.animationDelay = (i * 0.28) + "s";
+        p.appendChild(a);
+      }
+      const c = document.createElement("span");
+      c.className = "chip" + (/generate/.test(s) ? " hl" : "");
+      c.textContent = fmtStep(s);
+      c.style.animationDelay = (i * 0.28) + "s";
+      p.appendChild(c);
+    });
+  }
+  function typeText(text, done) {
+    const el = $("answer"); el.textContent = "";
+    const caret = document.createElement("span"); caret.className = "caret";
+    el.appendChild(caret);
+    let i = 0;
+    const iv = setInterval(() => {
+      i = Math.min(i + 3, text.length);
+      el.firstChild ? el.insertBefore(document.createTextNode(""), caret) : null;
+      el.childNodes[0].textContent = text.slice(0, i);
+      if (i >= text.length) { clearInterval(iv); caret.remove(); done && done(); }
+    }, 14);
+  }
+  function srcLabel(s) {
+    if (/^https?:/.test(s)) {
+      let host = ""; try { host = new URL(s).hostname.replace(/^www\./, ""); } catch (e) { host = s; }
+      return { icon: "🌐", text: host, href: s };
+    }
+    const name = s.split(/[\\/]/).pop();
+    return { icon: "📄", text: name, href: null, title: s };
+  }
+  function renderSources(list) {
+    const box = $("sources"); box.innerHTML = ""; 
+    if (!list || !list.length) { box.classList.remove("show"); return; }
+    list.forEach((s, i) => {
+      const d = srcLabel(s);
+      const a = document.createElement(d.href ? "a" : "span");
+      a.className = "src";
+      if (d.href) { a.href = d.href; a.target = "_blank"; a.rel = "noopener"; }
+      if (d.title) a.title = d.title;
+      a.style.animation = `chipIn .4s ${0.15 * i}s forwards`; a.style.opacity = 0;
+      a.innerHTML = `<span class="ico">${d.icon}</span>`; a.appendChild(document.createTextNode(d.text));
+      box.appendChild(a);
+    });
+    box.classList.add("show");
+  }
+  function setBadge(source) {
+    const b = $("src-badge");
+    const map = {
+      docs:   ["📚", "Answered from your documents", "docs"],
+      web:    ["🌐", "Answered from the web", "web"],
+      direct: ["💭", "Answered from model knowledge", "direct"]
+    };
+    const [icon, label, cls] = map[source] || map.direct;
+    b.className = "badge " + cls; b.textContent = `${icon} ${label}`;
+  }
+
+  /* ---- main flow ---- */
+  let busy = false;
+  async function doAsk(question) {
+    if (busy || !question.trim()) return;
+    busy = true; $("ask").disabled = true;
+    $("out-wrap").classList.add("show");
+    $("pipeline").innerHTML = ""; $("answer").textContent = "";
+    $("sources").classList.remove("show");
+    $("elapsed").textContent = ""; setBadge("direct");
+    $("src-badge").textContent = "⏳ Working on it…";
+    $("src-badge").className = "badge direct";
+    startLoading();
+    try {
+      const r = await fetch("/ask", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question })
+      });
+      const d = await r.json();
+      stopLoading();
+      if (!r.ok || d.error) throw new Error(d.error || "Request failed");
+      setBadge(d.source);
+      $("elapsed").textContent = "⏱ " + (d.elapsed != null ? d.elapsed.toFixed ? d.elapsed.toFixed(1) : d.elapsed : "?") + "s";
+      renderPipeline(d.steps);
+      renderSources(d.sources);
+      typeText(d.answer);
+    } catch (err) {
+      stopLoading();
+      $("src-badge").textContent = "⚠️ Something went wrong";
+      $("src-badge").className = "badge direct";
+      const e = $("error"); e.textContent = err.message; e.classList.add("show");
+    } finally {
+      busy = false; $("ask").disabled = false;
+    }
+  }
+
+  $("ask").addEventListener("click", () => doAsk($("q").value));
+  $("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doAsk($("q").value); });
+  document.querySelectorAll(".ex-chip").forEach((chip) => {
+    chip.addEventListener("click", () => { $("q").value = chip.textContent.trim(); doAsk($("q").value); });
+  });
+})();
+</script>
+</body>
+</html>

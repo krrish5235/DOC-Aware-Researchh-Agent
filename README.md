@@ -89,6 +89,11 @@ curl -X POST http://localhost:5000/ask -H "Content-Type: application/json" ^
      -d "{\"question\": \"When should I prefer RAG over fine-tuning?\"}"
 ```
 
+**Web UI** — glass card with mouse-tracking 3D tilt, animated routing-pipeline
+visualization, and clickable example questions:
+
+![Web UI](assets/screenshot.png)
+
 Example response:
 
 ```json
