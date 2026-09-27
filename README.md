@@ -90,9 +90,16 @@ curl -X POST http://localhost:5000/ask -H "Content-Type: application/json" ^
 ```
 
 **Web UI** — glass card with mouse-tracking 3D tilt, animated routing-pipeline
-visualization, and clickable example questions:
+visualization, clickable example questions, and a **document upload panel**:
 
 ![Web UI](assets/screenshot.png)
+
+**Uploading your own documents:** drop PDF / TXT / MD / DOCX files onto the
+upload panel (or click to browse). They are saved to `docs/` and indexed
+immediately — a few seconds later you can ask questions about them, with the
+file cited in the answer. Re-uploading a file with the same name replaces its
+previous version in the index; the ✕ on a file chip removes it and its chunks.
+Prefer the terminal? `python ingest.py` rebuilds the whole index from `docs/`.
 
 Example response:
 
@@ -127,7 +134,8 @@ doc-aware-research-agent/
 ├── tools.py        # search_docs (RAG) and web_search (Tavily/DuckDuckGo) tools
 ├── ingest.py       # loads docs/, chunks, embeds, writes Chroma index
 ├── config.py       # keys, model names, chunking parameters
-├── docs/           # your documents (2 samples included)
+├── docs/           # your documents (2 samples included; uploads land here too)
+├── templates/      # the single-page web UI
 ├── chroma_db/      # persisted vector index (gitignored, created by ingest.py)
 └── requirements.txt
 ```

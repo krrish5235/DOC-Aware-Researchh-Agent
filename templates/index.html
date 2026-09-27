@@ -220,6 +220,39 @@
   #load-msg::after { content: ""; animation: dots 1.4s steps(4) infinite; }
   @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
 
+  /* documents panel */
+  #docs-panel { margin-top: 18px; padding: 20px 26px 22px; transform: translateZ(10px); }
+  .docs-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .docs-title { font-size: 15px; font-weight: 700; color: var(--text); }
+  .drop {
+    border: 1.5px dashed rgba(45,212,191,.4); border-radius: 14px;
+    padding: 18px 16px; text-align: center; cursor: pointer;
+    transition: all .2s ease; background: rgba(255,255,255,.02);
+  }
+  .drop:hover, .drop.over {
+    border-color: rgba(45,212,191,.85); background: rgba(45,212,191,.07);
+    transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgba(45,212,191,.35);
+  }
+  .drop-ico { font-size: 22px; margin-bottom: 4px; }
+  .drop-main { font-size: 13.5px; color: var(--text); }
+  .drop-hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+  .browse { color: var(--teal); text-decoration: underline; cursor: pointer; }
+  #up-status { font-size: 12.5px; margin-top: 10px; min-height: 16px; color: var(--muted); }
+  #up-status.ok { color: #5eead4; }
+  #up-status.err { color: #fda4af; }
+  #doc-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .doc-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; color: #9db4c8; padding: 6px 12px;
+    border: 1px solid var(--glass-border); border-radius: 10px;
+    background: rgba(255,255,255,.03);
+    transition: all .15s ease;
+  }
+  .doc-chip:hover { color: #cfe9ff; border-color: rgba(56,189,248,.4); }
+  .doc-chip .rm { cursor: pointer; color: #55617a; font-weight: 700; padding: 0 2px; transition: color .15s; }
+  .doc-chip .rm:hover { color: #fda4af; }
+  .doc-chip .sz { color: #55617a; }
+
   footer { margin-top: 26px; color: #55617a; font-size: 12px; text-align: center; transform: translateZ(6px); }
   footer b { color: #6d7a94; font-weight: 600; }
 
@@ -283,6 +316,21 @@
           <div id="load-msg">Routing your question</div>
         </div>
       </div>
+    </div>
+
+    <div id="docs-panel" class="panel">
+      <div class="docs-head">
+        <span class="docs-title">Your documents</span>
+        <span class="badge time" id="doc-count"></span>
+      </div>
+      <div id="drop" class="drop">
+        <input type="file" id="fin" multiple accept=".pdf,.txt,.md,.docx" hidden>
+        <div class="drop-ico">⬆</div>
+        <div class="drop-main"><b>Drag &amp; drop files here</b> or <span class="browse">click to browse</span></div>
+        <div class="drop-hint">PDF · TXT · MD · DOCX — indexed instantly, then just ask</div>
+      </div>
+      <div id="up-status"></div>
+      <div id="doc-list"></div>
     </div>
 
     <footer>Built with <b>LangGraph</b> · <b>Gemini</b> · <b>Chroma</b> · <b>Tavily / DuckDuckGo</b> — your documents never leave this machine</footer>
@@ -434,6 +482,67 @@
   document.querySelectorAll(".ex-chip").forEach((chip) => {
     chip.addEventListener("click", () => { $("q").value = chip.textContent.trim(); doAsk($("q").value); });
   });
+
+  /* ---- documents: list + drag&drop upload ---- */
+  const drop = $("drop"), fin = $("fin"), upStatus = $("up-status"), docList = $("doc-list");
+
+  function setUpStatus(msg, cls) { upStatus.textContent = msg; upStatus.className = cls || ""; }
+
+  async function loadFiles() {
+    try {
+      const d = await (await fetch("/api/files")).json();
+      docList.innerHTML = "";
+      $("doc-count").textContent = d.files.length ? d.files.length + " indexed" : "none yet";
+      d.files.forEach((f) => {
+        const chip = document.createElement("span");
+        chip.className = "doc-chip";
+        chip.innerHTML = `📄 ${f.name} <span class="sz">${f.size_kb} KB</span> <span class="rm" title="remove">✕</span>`;
+        chip.querySelector(".rm").addEventListener("click", async () => {
+          chip.querySelector(".rm").textContent = "…";
+          await fetch("/api/files/" + encodeURIComponent(f.name), { method: "DELETE" });
+          loadFiles();
+        });
+        docList.appendChild(chip);
+      });
+    } catch (e) { /* server hiccup - keep the list as is */ }
+  }
+
+  async function uploadFiles(list) {
+    const files = [...list];
+    if (!files.length) return;
+    const fd = new FormData();
+    files.forEach((f) => fd.append("files", f));
+    setUpStatus("Uploading & indexing…");
+    try {
+      const r = await fetch("/upload", { method: "POST", body: fd });
+      const d = await r.json();
+      if (!r.ok && !d.files) {
+        let msg = d.error || "Upload failed";
+        (d.skipped || []).forEach((s) => { msg += ` · ${s.file}: ${s.reason}`; });
+        setUpStatus(msg, "err");
+      } else {
+        let msg = d.chunks != null
+          ? `Indexed ${d.chunks} chunk${d.chunks === 1 ? "" : "s"} from ${d.files.join(", ")}`
+          : (d.error || "Upload failed");
+        (d.skipped || []).forEach((s) => { msg += ` · skipped ${s.file} (${s.reason})`; });
+        setUpStatus(msg, d.chunks != null ? "ok" : "err");
+      }
+    } catch (err) {
+      setUpStatus("Upload failed: " + err.message, "err");
+    }
+    loadFiles();
+  }
+
+  drop.addEventListener("click", () => fin.click());
+  ["dragover", "dragenter"].forEach((ev) =>
+    drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); })
+  );
+  ["dragleave", "drop"].forEach((ev) =>
+    drop.addEventListener(ev, () => drop.classList.remove("over"))
+  );
+  drop.addEventListener("drop", (e) => { e.preventDefault(); uploadFiles(e.dataTransfer.files); });
+  fin.addEventListener("change", () => { uploadFiles(fin.files); fin.value = ""; });
+  loadFiles();
 })();
 </script>
 </body>

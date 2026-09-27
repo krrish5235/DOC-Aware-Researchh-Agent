@@ -5,3 +5,7 @@ __pycache__/
 *.log
 venv/
 .venv/
+
+# personal documents - never publish these
+docs/*.pdf
+Doc-Aware_Research_Agent_Explained.pdf

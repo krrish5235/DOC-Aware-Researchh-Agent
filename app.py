@@ -13,8 +13,10 @@ Flask:
 import argparse
 import re
 import sys
+import time
+from pathlib import Path
 
-from config import GOOGLE_API_KEY
+from config import DOCS_DIR, GOOGLE_API_KEY
 
 graph = None  # imported lazily in ask() so `--help` works without an API key
 
@@ -34,8 +36,6 @@ def ask(question: str) -> dict:
         from graph import graph as g
 
         graph = g
-    import time
-
     t0 = time.perf_counter()
     result = graph.invoke({"question": question, "steps": []})
 
@@ -96,6 +96,92 @@ def create_app():
             return jsonify(ask(question))
         except Exception as exc:
             return jsonify({"error": str(exc)}), 500
+
+    @app.post("/upload")
+    def upload_endpoint():
+        """Accept one or more files, save them into docs/ and index them."""
+        from ingest import SUPPORTED, ingest_paths
+        from werkzeug.utils import secure_filename
+
+        files = request.files.getlist("files")
+        if not files:
+            return jsonify({"error": "No files received"}), 400
+
+        DOCS_DIR.mkdir(exist_ok=True)
+        saved, skipped = [], []
+        for f in files:
+            name = secure_filename(f.filename or "")
+            if not name:
+                skipped.append({"file": f.filename, "reason": "invalid file name"})
+                continue
+            ext = Path(name).suffix.lower()
+            if ext not in SUPPORTED:
+                skipped.append(
+                    {
+                        "file": f.filename,
+                        "reason": f"unsupported type '{ext or '(none)'}' "
+                        f"- supported: {', '.join(SUPPORTED)}",
+                    }
+                )
+                continue
+            dest = DOCS_DIR / name
+            f.save(dest)  # same name = replace the file; ingest swaps its old chunks
+            saved.append(dest)
+
+        if not saved:
+            return jsonify({"error": "No supported files", "skipped": skipped}), 400
+
+        try:
+            chunks = ingest_paths(saved)
+        except Exception as exc:
+            return (
+                jsonify(
+                    {
+                        "error": f"Saved but indexing failed: {exc}",
+                        "saved": [p.name for p in saved],
+                    }
+                ),
+                500,
+            )
+
+        return jsonify(
+            {
+                "indexed": True,
+                "chunks": chunks,
+                "files": [p.name for p in saved],
+                "skipped": skipped,
+            }
+        )
+
+    @app.get("/api/files")
+    def files_endpoint():
+        """List the documents the agent can answer from."""
+        from ingest import SUPPORTED
+
+        items = []
+        if DOCS_DIR.exists():
+            for p in sorted(DOCS_DIR.iterdir()):
+                if p.is_file() and p.suffix.lower() in SUPPORTED:
+                    items.append(
+                        {"name": p.name, "size_kb": round(p.stat().st_size / 1024, 1)}
+                    )
+        return jsonify({"files": items})
+
+    @app.delete("/api/files/<path:name>")
+    def delete_file_endpoint(name):
+        """Remove a document and its indexed chunks."""
+        from ingest import remove_source
+
+        dest = DOCS_DIR / Path(name).name
+        if not dest.is_file():
+            return jsonify({"error": "not found"}), 404
+        removed = 0
+        try:
+            removed = remove_source(dest)
+        except Exception:
+            pass  # index may not exist yet - still allow removing the file
+        dest.unlink()
+        return jsonify({"deleted": dest.name, "chunks_removed": removed})
 
     return app
 
