@@ -11,12 +11,14 @@ Flask:
 """
 
 import argparse
+import os
 import re
 import sys
 import time
 from pathlib import Path
 
-from config import DOCS_DIR, GOOGLE_API_KEY
+from config import CHROMA_DIR, DOCS_DIR, GOOGLE_API_KEY
+
 
 graph = None  # imported lazily in ask() so `--help` works without an API key
 
@@ -186,6 +188,9 @@ def create_app():
     return app
 
 
+app = create_app()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Doc-Aware Research Agent")
     parser.add_argument("question", nargs="*", help="question to ask")
@@ -204,8 +209,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
     if args.serve:
-        create_app().run(host="127.0.0.1", port=args.port)
+        port = int(os.environ.get("PORT", args.port))
+        app.run(host="0.0.0.0", port=port)
     elif args.question:
         print_answer(ask(" ".join(args.question)))
     else:
         run_cli()
+
